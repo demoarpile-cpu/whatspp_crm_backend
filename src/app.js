@@ -12,8 +12,7 @@ app.use(cors({
     origin: [
         process.env.FRONTEND_URL,
         'http://localhost:3000',
-        'https://whatsapp-crm.kiaantechnology.com',
-        'https://whtasapp-crm.wenbear.online'
+        'https://whatsapp-crm.kiaantechnology.com'
     ].filter(Boolean),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
