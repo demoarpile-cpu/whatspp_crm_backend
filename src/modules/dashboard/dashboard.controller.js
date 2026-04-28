@@ -93,12 +93,14 @@ exports.getAdminDashboard = async (req, res, next) => {
 // @desc    Get Manager Dashboard Stats
 exports.getManagerDashboard = async (req, res, next) => {
     try {
+        const leadWhere = { ...req.leadScope };
+        
         const [totalLeads, qualifiedLeads, convertedLeads, enrolledLeads, lostLeads] = await Promise.all([
-            prisma.lead.count(),
-            prisma.lead.count({ where: { stage: 'Qualified' } }),
-            prisma.lead.count({ where: { stage: 'Converted' } }),
-            prisma.lead.count({ where: { stage: 'Enrolled' } }),
-            prisma.lead.count({ where: { stage: 'Lost' } })
+            prisma.lead.count({ where: leadWhere }),
+            prisma.lead.count({ where: { ...leadWhere, stage: 'Qualified' } }),
+            prisma.lead.count({ where: { ...leadWhere, stage: 'Converted' } }),
+            prisma.lead.count({ where: { ...leadWhere, stage: 'Enrolled' } }),
+            prisma.lead.count({ where: { ...leadWhere, stage: 'Lost' } })
         ]);
 
         const kpis = [
@@ -111,6 +113,7 @@ exports.getManagerDashboard = async (req, res, next) => {
         // Funnel Summary Aggregation
         const funnelRaw = await prisma.lead.groupBy({
             by: ['stage'],
+            where: leadWhere,
             _count: { _all: true }
         });
 
@@ -124,6 +127,7 @@ exports.getManagerDashboard = async (req, res, next) => {
         // Country Performance Aggregation
         const countryRaw = await prisma.lead.groupBy({
             by: ['country'],
+            where: leadWhere,
             _count: { _all: true }
         });
 
@@ -158,24 +162,27 @@ exports.getManagerDashboard = async (req, res, next) => {
 // @desc    Create a database snapshot
 exports.createSnapshot = async (req, res, next) => {
     try {
-        await exportAll();
-        const originalPath = path.join(__dirname, '../../../../backend/scripts/crm-db-data.json');
+        console.log("[SNAPSHOT LOG]: Executing optimized snapshot logic v1.2...");
+        
+        const rootDir = process.cwd();
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const snapshotPath = path.join(__dirname, `../../../../backend/data/snapshots/crm_snapshot_${timestamp}.json`);
+        const snapshotsDir = path.join(rootDir, 'data', 'snapshots');
+        const snapshotPath = path.join(snapshotsDir, `crm_snapshot_${timestamp}.json`);
 
-        const snapshotsDir = path.dirname(snapshotPath);
-        if (!fs.existsSync(snapshotsDir)) {
-            fs.mkdirSync(snapshotsDir, { recursive: true });
-        }
-
-        fs.copyFileSync(originalPath, snapshotPath);
+        // 1. Export directly to the snapshots directory (no copy needed)
+        await exportAll(snapshotPath);
 
         res.json({
             success: true,
-            message: `New database file created: snapshots/crm_snapshot_${timestamp}.json`,
-            data: { path: snapshotPath }
+            message: `Snapshot created successfully: crm_snapshot_${timestamp}.json`,
+            data: { 
+                filename: `crm_snapshot_${timestamp}.json`,
+                timestamp: new Date().toISOString(),
+                status: "Optimized Direct Export"
+            }
         });
     } catch (error) {
+        console.error('[SNAPSHOT ERROR]:', error.message);
         next(error);
     }
 };
@@ -282,15 +289,10 @@ exports.getTeamLeaderDashboard = async (req, res, next) => {
     try {
         const { country, team, status } = req.query;
 
-        const filter = {};
+        const filter = { ...req.leadScope };
         if (country && country !== 'Global') filter.country = country;
         if (team && team !== 'All Operators') filter.team = team;
         if (status && status !== 'All Stages') filter.stage = status;
-
-        // Fallback to user's team if no team filter is applied
-        if (!filter.team) {
-            filter.team = req.user?.team || 'General';
-        }
 
         const [teamLeads, pendingLeads, qualifiedLeads, slaBreaches] = await Promise.all([
             prisma.lead.count({ where: filter }),

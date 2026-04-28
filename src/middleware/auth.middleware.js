@@ -1,6 +1,9 @@
 const jwt = require('jsonwebtoken');
 const prisma = require('../config/prisma');
 
+// ─────────────────────────────────────────────────
+// 1. TOKEN VERIFICATION
+// ─────────────────────────────────────────────────
 const verifyToken = async (req, res, next) => {
     let token;
 
@@ -11,53 +14,73 @@ const verifyToken = async (req, res, next) => {
 
             const user = await prisma.user.findUnique({
                 where: { id: decoded.id },
-                include: {
-                    role: true
-                }
+                include: { role: true }
             });
-            req.user = user;
 
-            if (!req.user) {
+            if (!user) {
                 return res.status(401).json({ success: false, message: 'Not authorized, user not found', data: null });
             }
 
-            if (req.user.status !== 'Active') {
+            if (user.status !== 'Active') {
                 return res.status(401).json({ success: false, message: 'Your account is deactivated', data: null });
             }
 
+            req.user = user;
+            req.user.roleName = user.role?.name || '';
             next();
         } catch (error) {
-            console.error(error);
-            res.status(401).json({ success: false, message: 'Not authorized, token failed', data: null });
+            return res.status(401).json({ success: false, message: 'Not authorized, token failed', data: null });
         }
-    }
-
-    if (!token) {
-        res.status(401).json({ success: false, message: 'Not authorized, no token', data: null });
+    } else {
+        return res.status(401).json({ success: false, message: 'Not authorized, no token', data: null });
     }
 };
 
-const roleGuard = (...roles) => {
+// ─────────────────────────────────────────────────
+// 2. ROLE GUARD — STRICT RBAC
+// ─────────────────────────────────────────────────
+const roleGuard = (...allowedRoles) => {
     return (req, res, next) => {
-        // TEMPORARY FIX: Bypass strict role checks so frontend actions don't fail as "Connection Failed"
-        // TODO: Restore RBAC when frontend routes are properly protected
+        const userRole = req.user?.roleName || req.user?.role?.name || '';
+
+        if (!userRole) {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied. Role not found.'
+            });
+        }
+
+        if (!allowedRoles.includes(userRole)) {
+            return res.status(403).json({
+                success: false,
+                message: `Access denied. Required: [${allowedRoles.join(', ')}]. Your role: ${userRole}`
+            });
+        }
+
         next();
     };
 };
 
+// ─────────────────────────────────────────────────
+// 3. PERMISSION CHECK — Module-Level Access
+// ─────────────────────────────────────────────────
 const checkPermission = (module, action) => {
     return async (req, res, next) => {
         try {
-            // Handle both object { name: 'ROLE' } and string 'ROLE'
-            const role = typeof req.user.role === 'object' ? req.user.role?.name : req.user.role;
+            const roleName = req.user?.roleName || req.user?.role?.name || '';
+
+            // SuperAdmin has all access
+            if (roleName === 'SUPER_ADMIN') return next();
 
             const permission = await prisma.rolePermission.findFirst({
                 where: { roleId: req.user.roleId, module }
             });
 
             if (!permission) {
-                if (role === 'SUPER_ADMIN') return next();
-                return res.status(403).json({ success: false, message: `Access denied for module: ${module}` });
+                return res.status(403).json({
+                    success: false,
+                    message: `Access denied for module: ${module}`
+                });
             }
 
             let hasAccess = false;
@@ -65,8 +88,11 @@ const checkPermission = (module, action) => {
             if (action === 'edit') hasAccess = permission.canEdit;
             if (action === 'delete') hasAccess = permission.canDelete;
 
-            if (!hasAccess && role !== 'SUPER_ADMIN') {
-                return res.status(403).json({ success: false, message: `Permission ${action} denied for module: ${module}` });
+            if (!hasAccess) {
+                return res.status(403).json({
+                    success: false,
+                    message: `Permission '${action}' denied for module: ${module}`
+                });
             }
 
             next();
@@ -76,4 +102,27 @@ const checkPermission = (module, action) => {
     };
 };
 
-module.exports = { verifyToken, roleGuard, checkPermission };
+// ─────────────────────────────────────────────────
+// 4. DATA SCOPE — Filter data by role visibility
+// ─────────────────────────────────────────────────
+/**
+ * Adds scope filter to req based on role:
+ * - COUNSELOR: only own leads
+ * - TEAM_LEADER: only team leads
+ * - MANAGER/ADMIN/SUPER_ADMIN: all leads
+ */
+const scopeLeads = (req, res, next) => {
+    const role = req.user?.roleName || req.user?.role?.name || '';
+
+    if (role === 'COUNSELOR') {
+        req.leadScope = { assignedTo: req.user.id };
+    } else if (role === 'TEAM_LEADER') {
+        req.leadScope = { team: req.user.team };
+    } else {
+        req.leadScope = {}; // Full access
+    }
+
+    next();
+};
+
+module.exports = { verifyToken, roleGuard, checkPermission, scopeLeads };

@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,40 +7,20 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ─────────────────────────────────────────────────
-// ENUMS
-// ─────────────────────────────────────────────────
-
 model Role {
   id          Int              @id @default(autoincrement())
-  name        String           @unique // e.g., "ADMIN", "COUNSELOR"
+  name        String           @unique
   description String?
-  users       User[]
-  permissions RolePermission[]
   menus       Menu[]
+  permissions RolePermission[]
+  users       User[]
 
   @@map("roles")
 }
 
-enum Status {
-  Active
-  Inactive
-}
-
-enum LeadPriority {
-  Low
-  Medium
-  High
-}
-
-enum ActivityStatus {
-  Success
-  Failed
-}
-
 model LeadStatus {
-  id    Int    @id @default(autoincrement())
-  name  String @unique // e.g., "New", "Qualified", "Converted"
+  id    Int     @id @default(autoincrement())
+  name  String  @unique
   color String? @default("#CBD5E1")
   leads Lead[]
 
@@ -57,77 +34,40 @@ model Activity {
   action    String
   details   String?  @db.Text
   timestamp DateTime @default(now())
-
-  // Relations
-  user      User?    @relation(fields: [userId], references: [id])
   lead      Lead?    @relation(fields: [leadId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id])
 
+  @@index([leadId], map: "activities_leadId_fkey")
+  @@index([userId], map: "activities_userId_fkey")
   @@map("activities")
 }
 
-enum ChannelType {
-  WhatsApp
-  Facebook
-  Website
-  Instagram
-  Telegram
-}
-
-enum ChannelStatus {
-  Active
-  Inactive
-  Error
-}
-
-enum SubscriptionStatus {
-  Active
-  Expired
-  Suspended
-}
-
-enum RoutingType {
-  Country_Based @map("Country Based")
-  Round_Robin   @map("Round Robin")
-  Load_Based    @map("Load Based")
-  Weightage
-  Direct
-}
-
-enum RoutingStatus {
-  Active
-  Paused
-}
-
-// ─────────────────────────────────────────────────
-// CORE MODELS
-// ─────────────────────────────────────────────────
-
 model User {
-  id               Int                @id @default(autoincrement())
+  id               Int               @id @default(autoincrement())
   name             String
-  email            String             @unique
+  email            String            @unique
   password         String
-  roleId           Int                @default(1)
-  status           Status             @default(Active)
-  country          String?            @default("India")
-  team             String?            @default("General")
-  client           String?            @default("Global Entity")
-  assignedChannels Int?               @default(0)
-  permissions      Json?              // Array of permission strings
-  refreshToken     String?            @db.Text
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
-
-  // Relations
-  role             Role               @relation(fields: [roleId], references: [id])
-  leads            Lead[]             @relation("AssignedTo")
-  activityLogs     ActivityLog[]
-  messageTemplates MessageTemplate[]
-  counselorNotes   CounselorNote[]
-  notifications    Notification[]
-  calls            Call[]
+  roleId           Int               @default(1)
+  status           Status            @default(Active)
+  country          String?           @default("India")
+  team             String?           @default("General")
+  client           String?           @default("Global Entity")
+  assignedChannels Int?              @default(0)
+  permissions      String?           @db.LongText
+  refreshToken     String?           @db.Text
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  lastAssignedAt   DateTime?
   activities       Activity[]
+  activityLogs     ActivityLog[]
+  calls            Call[]
+  counselorNotes   CounselorNote[]
+  leads            Lead[]            @relation("AssignedTo")
+  messageTemplates MessageTemplate[]
+  notifications    Notification[]
+  role             Role              @relation(fields: [roleId], references: [id])
 
+  @@index([roleId], map: "users_roleId_fkey")
   @@map("users")
 }
 
@@ -139,24 +79,26 @@ model Lead {
   email          String?
   program        String?
   statusId       Int?
-  stage          String?         @default("New") // Legecy string stage for quick access
+  stage          String?         @default("New")
   score          Int?            @default(0)
   source         String?         @default("Website")
   assignedTo     Int?
   team           String?         @default("General")
   priority       LeadPriority    @default(Medium)
-  followUpDate   DateTime?       // For counselor follow-up scheduling
+  followUpDate   DateTime?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
-
-  // Relations
-  assignedUser   User?           @relation("AssignedTo", fields: [assignedTo], references: [id], onDelete: SetNull)
+  activities     Activity[]
+  calls          Call[]
+  counselorNotes CounselorNote[]
+  assignedUser   User?           @relation("AssignedTo", fields: [assignedTo], references: [id])
   status         LeadStatus?     @relation(fields: [statusId], references: [id])
   messages       Message[]
-  counselorNotes CounselorNote[]
-  calls          Call[]
-  activities     Activity[]
 
+  @@index([assignedTo])
+  @@index([stage])
+  @@index([country])
+  @@index([statusId], map: "leads_statusId_fkey")
   @@map("leads")
 }
 
@@ -168,10 +110,9 @@ model Message {
   sender    String?
   isRead    Boolean  @default(false)
   timestamp DateTime @default(now())
-
-  // Relations
   lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
 
+  @@index([leadId], map: "messages_leadId_fkey")
   @@map("messages")
 }
 
@@ -187,11 +128,11 @@ model Call {
   date        String?
   time        String?
   createdAt   DateTime @default(now())
-
-  // Relations
+  counselor   User?    @relation(fields: [counselorId], references: [id])
   lead        Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  counselor   User?    @relation(fields: [counselorId], references: [id], onDelete: SetNull)
 
+  @@index([counselorId], map: "calls_counselorId_fkey")
+  @@index([leadId], map: "calls_leadId_fkey")
   @@map("calls")
 }
 
@@ -201,17 +142,13 @@ model CounselorNote {
   authorId  Int
   text      String   @db.Text
   createdAt DateTime @default(now())
-
-  // Relations
-  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
   author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
 
+  @@index([authorId], map: "counselor_notes_authorId_fkey")
+  @@index([leadId], map: "counselor_notes_leadId_fkey")
   @@map("counselor_notes")
 }
-
-// ─────────────────────────────────────────────────
-// COMMUNICATION MODELS
-// ─────────────────────────────────────────────────
 
 model Channel {
   id           Int           @id @default(autoincrement())
@@ -223,7 +160,7 @@ model Channel {
   status       ChannelStatus @default(Active)
   usage_count  Int?          @default(0)
   lastActivity DateTime?
-  config       Json?
+  config       String?       @db.LongText
   createdAt    DateTime      @default(now())
 
   @@map("channels")
@@ -237,10 +174,9 @@ model MessageTemplate {
   variable_count Int?     @default(0)
   createdBy      Int?
   createdAt      DateTime @default(now())
+  user           User?    @relation(fields: [createdBy], references: [id])
 
-  // Relations
-  user           User?    @relation(fields: [createdBy], references: [id], onDelete: SetNull)
-
+  @@index([createdBy], map: "message_templates_createdBy_fkey")
   @@map("message_templates")
 }
 
@@ -250,32 +186,27 @@ model Notification {
   message   String   @db.Text
   status    String   @default("Unread")
   createdAt DateTime @default(now())
-
-  // Relations
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId], map: "notifications_userId_fkey")
   @@map("notifications")
 }
-
-// ─────────────────────────────────────────────────
-// SYSTEM / ADMIN MODELS
-// ─────────────────────────────────────────────────
 
 model ActivityLog {
   id        Int            @id @default(autoincrement())
   userId    Int?
   action    String
   module    String?
-  leads     String?        // Added for team leader notes context
+  leads     String?
   details   String?        @db.Text
   status    ActivityStatus @default(Success)
   ip        String?
   device    String?
   timestamp DateTime       @default(now())
+  user      User?          @relation(fields: [userId], references: [id])
 
-  // Relations
-  user      User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
-
+  @@index([userId])
+  @@index([timestamp])
   @@map("activity_logs")
 }
 
@@ -284,7 +215,7 @@ model RoutingRule {
   name      String
   team      String?
   country   String?
-  counselor String?       // Counselor name or identifier (not FK, intentional)
+  counselor String?
   type      RoutingType   @default(Round_Robin)
   status    RoutingStatus @default(Active)
   priority  Int?          @default(1)
@@ -301,8 +232,6 @@ model RolePermission {
   canEdit   Boolean  @default(false)
   canDelete Boolean  @default(false)
   createdAt DateTime @default(now())
-
-  // Relations
   role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   @@unique([roleId, module])
@@ -321,34 +250,26 @@ model Integration {
   @@map("integrations")
 }
 
-// ─────────────────────────────────────────────────
-// BILLING / SUBSCRIPTION
-// ─────────────────────────────────────────────────
-
 model Subscription {
-  id             Int                @id @default(autoincrement())
-  clientName     String
-  plan           String
-  status         SubscriptionStatus @default(Active)
-  renewalDate    DateTime?          @db.Date
-  messagesCount  Int?               @default(0)
-  contactsCount  Int?               @default(0)
-  createdAt      DateTime           @default(now())
+  id            Int                @id @default(autoincrement())
+  clientName    String
+  plan          String
+  status        SubscriptionStatus @default(Active)
+  renewalDate   DateTime?          @db.Date
+  messagesCount Int?               @default(0)
+  contactsCount Int?               @default(0)
+  createdAt     DateTime           @default(now())
 
   @@map("subscriptions")
 }
 
-// ─────────────────────────────────────────────────
-// SETTINGS & CONFIGURATION
-// ─────────────────────────────────────────────────
-
 model AiConfig {
   id           Int      @id @default(1)
-  flow         Json?
+  flow         String?  @db.LongText
   threshold    Int      @default(75)
   enabled      Boolean  @default(true)
-  rules        Json?
-  scoringRules Json?
+  rules        String?  @db.LongText
+  scoringRules String?  @db.LongText
   updatedAt    DateTime @updatedAt
 
   @@map("ai_config")
@@ -374,10 +295,6 @@ model SecuritySetting {
 
   @@map("security_settings")
 }
-
-// ─────────────────────────────────────────────────
-// DASHBOARD SNAPSHOTS (used for historical tracking)
-// ─────────────────────────────────────────────────
 
 model SuperAdminDashboard {
   id             Int      @id @default(autoincrement())
@@ -412,11 +329,11 @@ model ManagerDashboard {
 }
 
 model TeamLeaderDashboard {
-  id              Int      @id @default(autoincrement())
-  teamLeads       Int      @default(0)
-  pendingReplies  Int      @default(0)
-  slaBreaches     Int      @default(0)
-  createdAt       DateTime @default(now())
+  id             Int      @id @default(autoincrement())
+  teamLeads      Int      @default(0)
+  pendingReplies Int      @default(0)
+  slaBreaches    Int      @default(0)
+  createdAt      DateTime @default(now())
 
   @@map("team_leader_dashboard")
 }
@@ -454,13 +371,13 @@ model SupportDashboard {
 
 model Template {
   id          Int      @id @default(autoincrement())
-  publicId    String   @unique @default(cuid())
+  publicId    String   @unique(map: "Template_publicId_key") @default(cuid())
   name        String
   type        String   @default("Daily")
   tasks       Int      @default(0)
   duration    String
   description String?  @default("")
-  taskList    Json?    
+  taskList    String?  @db.LongText
   createdBy   String   @default("System")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -487,21 +404,19 @@ model Rota {
   @@map("rota")
 }
 
-
 model Menu {
   id        Int       @id @default(autoincrement())
   label     String
-  icon      String    // Lucide icon name string
-  path      String?   // Null if top-level parent with submenus
+  icon      String
+  path      String?
   roleId    Int       @default(1)
   order     Int       @default(0)
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
-
-  // Relations
   role      Role      @relation(fields: [roleId], references: [id], onDelete: Cascade)
   submenus  Submenu[]
 
+  @@index([roleId], map: "Menu_roleId_fkey")
   @@map("menu")
 }
 
@@ -513,10 +428,9 @@ model Submenu {
   order     Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  // Relations
   menu      Menu     @relation(fields: [menuId], references: [id], onDelete: Cascade)
 
+  @@index([menuId], map: "Submenu_menuId_fkey")
   @@map("submenu")
 }
 
@@ -561,7 +475,7 @@ model Report {
   id        Int      @id @default(autoincrement())
   name      String
   type      String
-  data      Json?
+  data      String?  @db.LongText
   createdBy Int?
   createdAt DateTime @default(now())
 
@@ -577,4 +491,53 @@ model Setting {
   updatedAt DateTime @updatedAt
 
   @@map("settings")
+}
+
+enum Status {
+  Active
+  Inactive
+}
+
+enum LeadPriority {
+  Low
+  Medium
+  High
+}
+
+enum ActivityStatus {
+  Success
+  Failed
+}
+
+enum ChannelType {
+  WhatsApp
+  Facebook
+  Website
+  Instagram
+  Telegram
+}
+
+enum ChannelStatus {
+  Active
+  Inactive
+  Error
+}
+
+enum SubscriptionStatus {
+  Active
+  Expired
+  Suspended
+}
+
+enum RoutingType {
+  Country_Based @map("Country Based")
+  Round_Robin   @map("Round Robin")
+  Load_Based    @map("Load Based")
+  Weightage
+  Direct
+}
+
+enum RoutingStatus {
+  Active
+  Paused
 }

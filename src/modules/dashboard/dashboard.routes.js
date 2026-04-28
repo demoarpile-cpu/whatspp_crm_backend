@@ -14,7 +14,10 @@ const {
     updateSuperAdminDashboard,
     createSnapshot
 } = require('./dashboard.controller');
-const { verifyToken, roleGuard } = require('../../middleware/auth.middleware');
+const { verifyToken, roleGuard, scopeLeads } = require('../../middleware/auth.middleware');
+
+router.use(verifyToken);
+router.use(scopeLeads);
 
 router.get('/kpi', verifyToken, getKpiStats);
 router.get('/stats', verifyToken, getDashboardStats);

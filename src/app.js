@@ -1,13 +1,36 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const helmet = require('helmet');
+const morgan = require('morgan');
+const rateLimit = require('express-rate-limit');
 const { errorMiddleware } = require('./middleware/error.middleware');
 
 dotenv.config();
 
 const app = express();
 
-// Middlewares
+// ─────────────────────────────────────────────────
+// 🛡️ PRODUCTION SECURITY & LOGGING
+// ─────────────────────────────────────────────────
+
+// 1. Secure Headers
+app.use(helmet());
+
+// 2. Request Logging (Morgan)
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+
+// 3. Global Rate Limiting
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 1000, // Limit each IP to 1000 requests per window
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, message: 'Too many requests from this IP, please try again after 15 minutes.' }
+});
+app.use('/api/', limiter);
+
+// Standard Middlewares
 app.use(cors({
     origin: [
         process.env.FRONTEND_URL,
@@ -18,11 +41,11 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '1mb' })); // Limit body size to prevent DoS
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 app.get('/', (req, res) => {
-    res.json({ success: true, message: 'CRM API is running' });
+    res.json({ success: true, message: 'CRM Production API is running' });
 });
 
 const db = require('./config/database');
@@ -107,6 +130,9 @@ app.use('/api/templates', templateRoutes);
 
 const routingRoutes = require('./modules/leads/routing.routes');
 app.use('/api/routing', routingRoutes);
+
+const aiRoutes = require('./modules/leads/ai.routes');
+app.use('/api/ai', aiRoutes);
 
 const adminRoutes = require('./modules/admin/admin.routes');
 app.use('/api/admin', adminRoutes);

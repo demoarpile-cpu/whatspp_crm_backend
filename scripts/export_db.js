@@ -4,7 +4,7 @@ const path = require('path');
 
 const prisma = new PrismaClient();
 
-async function exportAll() {
+async function exportAll(targetPath = null) {
     const data = {};
 
     // Ignore internal properties
@@ -23,14 +23,18 @@ async function exportAll() {
         }
     }
 
-    const docsDir = path.join(__dirname, '../docs');
-    if (!fs.existsSync(docsDir)) {
-        fs.mkdirSync(docsDir, { recursive: true });
+    // Determine target path and ensure directory exists
+    const filePath = targetPath || path.join(__dirname, '../docs', 'crm-db-data.json');
+    const targetDir = path.dirname(filePath);
+    
+    if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true });
     }
 
-    const filePath = path.join(docsDir, 'crm-db-data.json');
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
-    console.log(`\nSuccessfully exported full database to ${filePath}`);
+    console.log(`\nSuccessfully exported database to ${filePath}`);
+    
+    return filePath;
 }
 
 module.exports = { exportAll };

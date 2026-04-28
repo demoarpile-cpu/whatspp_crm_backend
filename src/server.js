@@ -61,10 +61,15 @@ io.on('connection', (socket) => {
 // Make io accessible to routes via req.app.get('io')
 app.set('io', io);
 
+const { initSlaJob } = require('./jobs/slaJob');
+
 server.listen(PORT, () => {
     console.log(`✅ CRM Server running on port ${PORT}`);
     console.log(`🔗 Frontend: ${process.env.FRONTEND_URL}`);
     console.log(`📡 Socket.io: Active`);
+    
+    // Start Background Jobs
+    initSlaJob();
 });
 
 // Handle unhandled rejections

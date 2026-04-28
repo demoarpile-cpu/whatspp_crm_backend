@@ -5,7 +5,9 @@ const socketManager = require('../../sockets/socketManager');
 // @route   GET /api/messages
 exports.getChats = async (req, res, next) => {
     try {
+        const leadWhere = { ...req.leadScope };
         const leads = await prisma.lead.findMany({
+            where: leadWhere,
             include: {
                 messages: {
                     orderBy: { timestamp: 'desc' },
@@ -69,6 +71,22 @@ exports.sendMessage = async (req, res, next) => {
                 sender
             }
         });
+
+        // SLA Tracking: Check if this is the first counselor response
+        if (sender !== 'lead') {
+            const previousMessages = await prisma.message.count({
+                where: { 
+                    leadId: parseInt(leadId), 
+                    sender: { not: 'lead' },
+                    id: { not: newMessage.id }
+                }
+            });
+
+            if (previousMessages === 0) {
+                const { trackSLA } = require('../../middleware/sla.middleware');
+                await trackSLA(parseInt(leadId), 'FIRST_RESPONSE', req.user?.id);
+            }
+        }
 
         // Emit real-time socket events
         socketManager.events.messageNew(newMessage);

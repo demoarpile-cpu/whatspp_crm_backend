@@ -1,41 +1,43 @@
 const mysql = require('mysql2/promise');
 require('dotenv').config();
 
-/**
- * Flexible MySQL Connection Pool
- * Works for both Local (XAMPP) and Remote (Railway)
- */
+const isProduction = process.env.NODE_ENV === 'production';
+
 const poolConfig = {
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
+    host: process.env.DB_HOST || '127.0.0.1',
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'crm_db',
     port: parseInt(process.env.DB_PORT) || 3306,
     waitForConnections: true,
     connectionLimit: 10,
-    maxIdle: 10,
-    idleTimeout: 60000,
+    queueLimit: 0,
     enableKeepAlive: true,
-    keepAliveInitialDelay: 10000,
+    keepAliveInitialDelay: 0,
+    connectTimeout: 30000,
 };
 
-// Add SSL only if connecting to a remote host (like Railway)
-if (process.env.DB_HOST !== '127.0.0.1' && process.env.DB_HOST !== 'localhost') {
-    poolConfig.ssl = {
-        rejectUnauthorized: false
-    };
+// SSL only for production (Railway)
+if (isProduction) {
+    poolConfig.ssl = { rejectUnauthorized: false };
 }
+
+console.log(`\n📦 [DATABASE]: ${isProduction ? 'PRODUCTION (Railway)' : 'LOCAL (XAMPP)'} | ${poolConfig.host}:${poolConfig.port}\n`);
 
 const pool = mysql.createPool(poolConfig);
 
-// Test connection
 pool.getConnection()
-    .then(connection => {
+    .then(conn => {
         console.log('✅ Database connection established successfully');
-        connection.release();
+        conn.release();
     })
     .catch(err => {
         console.error('❌ Database connection failed:', err.message);
+        if (!isProduction) {
+            console.error('   → Make sure XAMPP MySQL is STARTED (Green in Control Panel)');
+        } else {
+            console.error('   → Railway DB is only accessible when backend is deployed ON Railway');
+        }
     });
 
 module.exports = pool;
